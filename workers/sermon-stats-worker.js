@@ -1,6 +1,7 @@
 // sermon-stats — read-only stats API for the WordPress plugin
 // Bindings: D1 database → variable DB → download-stats
 // Custom domain: stats.sermons.download
+// Cron trigger: 17 3 * * *  (daily privacy clean-up, see cleanUp below)
 //
 // Each church has one key in the stats_keys table. The key decides the
 // church — the plugin never sends a slug, so a site can only ever see its own stats.
@@ -90,7 +91,49 @@ export default {
       return json({ error: 'Stats unavailable' }, 500);
     }
   },
+
+  // Runs daily from the Cron Trigger.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(cleanUp(env));
+  },
 };
+
+// Privacy clean-up (the retention promised in churches' privacy policies):
+//  - user_agent is deleted after 90 days (only needed for spotting bots).
+//  - visitor IDs older than 7 days are swapped for random codes starting "~". Each old ID
+//    gets one random code, so "same person, same day" still counts once and the stats
+//    don't change, but the code can no longer be traced back to an IP address, even
+//    with VISITOR_SALT. The lookup table is emptied straight away.
+// Note: D1 Time Travel can restore the database to any point in the last 30 days, so
+// old values are only gone for good once they're past that window too.
+const VISITOR_DAYS = 7;
+const USER_AGENT_DAYS = 90;
+
+async function cleanUp(env) {
+  const oldVisitor = `visitor IS NOT NULL AND visitor NOT LIKE '~%'
+    AND downloaded_at < date('now', '-${VISITOR_DAYS} days')`;
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare('CREATE TABLE IF NOT EXISTS visitor_map (visitor TEXT PRIMARY KEY, anon TEXT NOT NULL)'),
+      env.DB.prepare('DELETE FROM visitor_map'),
+      env.DB.prepare(`INSERT INTO visitor_map (visitor, anon)
+        SELECT visitor, '~' || lower(hex(randomblob(8)))
+        FROM (SELECT DISTINCT visitor FROM downloads WHERE ${oldVisitor})`),
+      env.DB.prepare(`UPDATE downloads
+        SET visitor = (SELECT anon FROM visitor_map m WHERE m.visitor = downloads.visitor)
+        WHERE ${oldVisitor}`),
+      env.DB.prepare('DELETE FROM visitor_map'),
+      env.DB.prepare(`UPDATE downloads SET user_agent = NULL
+        WHERE user_agent IS NOT NULL AND downloaded_at < date('now', '-${USER_AGENT_DAYS} days')`),
+    ]);
+    console.log(
+      `Clean-up done: ${results[3].meta.changes} visitor IDs anonymised, ` +
+        `${results[5].meta.changes} user agents removed`
+    );
+  } catch (err) {
+    console.error('Clean-up error:', err);
+  }
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
