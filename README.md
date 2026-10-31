@@ -43,9 +43,10 @@ Updates then appear in WordPress like any other plugin.
 | `sermon-stats-worker.js` | The `sermon-stats` Worker on `stats.sermons.download` (needs `DB`) |
 | `stats-keys.sql` | Creating, rotating and disabling church stats keys |
 | `migration-2026-10-visitor.sql` | Adds `visitor`, `bot`, `user_agent` to `downloads` (already run) |
+| `migration-2026-10-path.sql` | Adds `path` to `downloads` — run before deploying the Workers that use it |
 
 The D1 console needs **one statement at a time, with no comment lines**.
 
 ## How downloads are counted
 
-One visitor, one sermon, one day (UTC). Bots (by user agent) and non-sermon file types are excluded. Rows from before the visitor ID was added count at most once per sermon per minute.
+One visitor, one sermon (= one file path), one day (UTC). Bots (by user agent) and non-sermon file types are excluded. Rows from before the visitor ID was added count at most once per sermon per minute.

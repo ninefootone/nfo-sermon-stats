@@ -3,7 +3,7 @@
  * Plugin Name:       Sermon Download Stats
  * Plugin URI:        https://github.com/ninefootone/nfo-sermon-stats
  * Description:       Shows sermon download statistics from sermons.download in the WordPress dashboard.
- * Version:           1.2.1
+ * Version:           1.2.2
  * Author:            ninefootone creative
  * Author URI:        https://ninefootone.co.uk
  * Requires at least: 6.0
@@ -28,7 +28,7 @@ if ( file_exists( __DIR__ . '/lib/plugin-update-checker/plugin-update-checker.ph
 
 final class NFO_Sermon_Stats {
 
-	const VERSION          = '1.2.1';
+	const VERSION          = '1.2.2';
 	const OPTION           = 'nfo_sermon_stats_key';
 	const DEFAULT_ENDPOINT = 'https://stats.sermons.download/v1/summary';
 	const PAGE_SLUG        = 'nfo-sermon-stats';
@@ -318,7 +318,8 @@ final class NFO_Sermon_Stats {
 		echo '<ol class="nfo-ss-list">';
 		foreach ( $rows as $row ) {
 			$file = (string) ( $row['filename'] ?? '' );
-			echo '<li><span class="nfo-ss-file" title="' . esc_attr( $file ) . '">' . esc_html( self::pretty_filename( $file ) ) . '</span><span class="nfo-ss-count">' . esc_html( number_format_i18n( (int) ( $row['downloads'] ?? 0 ) ) ) . '</span></li>';
+			$path = (string) ( $row['path'] ?? $file );
+			echo '<li><span class="nfo-ss-file" title="' . esc_attr( $path ) . '">' . self::sermon_label( $file, $path ) . '</span><span class="nfo-ss-count">' . esc_html( number_format_i18n( (int) ( $row['downloads'] ?? 0 ) ) ) . '</span></li>';
 		}
 		echo '</ol>';
 	}
@@ -367,7 +368,8 @@ final class NFO_Sermon_Stats {
 		echo '<table class="widefat striped"><thead><tr><th>' . esc_html__( 'Sermon', 'nfo-sermon-stats' ) . '</th><th>' . esc_html__( 'Country', 'nfo-sermon-stats' ) . '</th><th>' . esc_html__( 'When', 'nfo-sermon-stats' ) . '</th></tr></thead><tbody>';
 		foreach ( $rows as $row ) {
 			$file = (string) $row['filename'];
-			echo '<tr><td title="' . esc_attr( $file ) . '">' . esc_html( self::pretty_filename( $file ) ) . '</td><td>' . esc_html( $row['country'] ? self::country_name( (string) $row['country'] ) : '—' ) . '</td><td>' . esc_html( self::format_time( (string) $row['downloaded_at'] ) ) . '</td></tr>';
+			$path = (string) ( $row['path'] ?? $file );
+			echo '<tr><td title="' . esc_attr( $path ) . '">' . self::sermon_label( $file, $path ) . '</td><td>' . esc_html( $row['country'] ? self::country_name( (string) $row['country'] ) : '—' ) . '</td><td>' . esc_html( self::format_time( (string) $row['downloaded_at'] ) ) . '</td></tr>';
 		}
 		echo '</tbody></table>';
 	}
@@ -394,6 +396,19 @@ final class NFO_Sermon_Stats {
 	/* ---------- Helpers ---------- */
 
 	/** "2026-04-12_Morning-Service.mp3" → "2026-04-12 Morning Service". Full name stays in the tooltip. */
+	/**
+	 * Escaped HTML label: tidied filename, plus its folder (e.g. "2026/10") so files
+	 * with the same name in different folders can be told apart.
+	 */
+	public static function sermon_label( $file, $path ) {
+		$label  = esc_html( self::pretty_filename( $file ) );
+		$folder = trim( (string) preg_replace( '#^.*?wp-content/uploads/#', '', dirname( $path ) ), '/.' );
+		if ( '' !== $folder ) {
+			$label .= ' <span class="nfo-ss-folder">' . esc_html( $folder ) . '</span>';
+		}
+		return $label;
+	}
+
 	public static function pretty_filename( $file ) {
 		$name = preg_replace( '/\.[a-z0-9]{2,4}$/i', '', $file );
 		$name = trim( preg_replace( '/[_\s]+|(?<!\d)-|-(?!\d)/', ' ', $name ) );
@@ -439,6 +454,7 @@ final class NFO_Sermon_Stats {
 			.nfo-ss-list{margin:0;padding:0;list-style:none}
 			.nfo-ss-list li{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid #f0f0f1;margin:0}
 			.nfo-ss-file{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+			.nfo-ss-folder{color:#646970;font-size:12px;margin-left:4px}
 			.nfo-ss-count{font-variant-numeric:tabular-nums;font-weight:600;flex-shrink:0}
 			.nfo-ss-empty,.nfo-ss-meta{color:#646970}
 			.nfo-ss-meta{font-size:12px;margin-top:12px}

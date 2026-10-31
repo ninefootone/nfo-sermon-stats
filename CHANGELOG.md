@@ -2,6 +2,11 @@
 
 All notable changes to Sermon Download Stats are documented here.
 
+## 1.2.2
+
+### Changed
+- Sermons with the same filename in different folders (e.g. several `6pm.mp3`) are now listed separately, with their folder shown next to the name. Needs the Nov 2026 download and stats Workers; downloads recorded before then can't be separated.
+
 ## 1.2.1
 
 ### Changed

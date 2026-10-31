@@ -36,23 +36,24 @@ export default {
     // (a Range request that doesn't start at byte 0 is the same download continuing).
     const range = (request.headers.get('Range') || '').trim();
     const isFirstChunk = range === '' || /^bytes=0-/i.test(range);
-    if (!isHead && isFirstChunk) ctx.waitUntil(logDownload(env, url, request, filename));
+    if (!isHead && isFirstChunk) ctx.waitUntil(logDownload(env, url, request, key, filename));
 
     return new Response(isHead ? null : object.body, { headers });
   },
 };
 
-async function logDownload(env, url, request, filename) {
+async function logDownload(env, url, request, path, filename) {
   try {
     const userAgent = request.headers.get('User-Agent') || '';
     const isBot = userAgent === '' || BOT_PATTERN.test(userAgent) ? 1 : 0;
     const now = new Date().toISOString();
 
     await env.DB.prepare(
-      'INSERT INTO downloads (church, filename, country, downloaded_at, visitor, bot, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO downloads (church, filename, path, country, downloaded_at, visitor, bot, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       env.CHURCH || url.hostname, // a hostname in stats = CHURCH variable missing
       filename,
+      path, // full key incl. folders, so 2026/10/6pm.mp3 and 2026/11/6pm.mp3 stay separate
       request.cf?.country || null,
       now,
       await visitorId(env, request, now.slice(0, 10)),
