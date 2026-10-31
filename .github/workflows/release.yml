@@ -5,6 +5,10 @@ on:
     tags:
       - 'v*'
 
+# Needed to create the release (new repos give Actions read-only access by default)
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
