@@ -1,0 +1,9 @@
+# PUC vendored dependency — exclude its own git history from the repo
+lib/**/.git
+
+# macOS metadata
+.DS_Store
+**/.DS_Store
+
+# Logs
+*.log

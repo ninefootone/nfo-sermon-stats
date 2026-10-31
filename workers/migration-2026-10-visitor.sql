@@ -1,0 +1,3 @@
+ALTER TABLE downloads ADD COLUMN visitor TEXT;
+ALTER TABLE downloads ADD COLUMN bot INTEGER;
+ALTER TABLE downloads ADD COLUMN user_agent TEXT;

@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create release zip
+        run: |
+          cd ..
+          # IMPORTANT: zip root folder must remain "nfo-sermon-stats/" — PUC matches
+          # the folder name to the plugin slug. Do not rename or restructure.
+          # workers/ is Cloudflare code, not part of the WordPress plugin.
+          zip -r nfo-sermon-stats.zip nfo-sermon-stats/ \
+            --exclude "*.git*" \
+            --exclude "*/.github/*" \
+            --exclude "nfo-sermon-stats/workers/*" \
+            --exclude "*/node_modules/*" \
+            --exclude "*/.DS_Store" \
+            --exclude "nfo-sermon-stats/lib/**/.git" \
+            --exclude "nfo-sermon-stats/lib/**/.git/*"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ../nfo-sermon-stats.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
