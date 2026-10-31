@@ -3,8 +3,8 @@
  * Plugin Name:       Sermon Download Stats
  * Plugin URI:        https://github.com/ninefootone/nfo-sermon-stats
  * Description:       Shows sermon download statistics from sermons.download in the WordPress dashboard.
- * Version:           1.2.0
- * Author:            Ninefootone Creative
+ * Version:           1.2.1
+ * Author:            ninefootone creative
  * Author URI:        https://ninefootone.co.uk
  * Requires at least: 6.0
  * Requires PHP:      7.4
@@ -28,7 +28,7 @@ if ( file_exists( __DIR__ . '/lib/plugin-update-checker/plugin-update-checker.ph
 
 final class NFO_Sermon_Stats {
 
-	const VERSION          = '1.2.0';
+	const VERSION          = '1.2.1';
 	const OPTION           = 'nfo_sermon_stats_key';
 	const DEFAULT_ENDPOINT = 'https://stats.sermons.download/v1/summary';
 	const PAGE_SLUG        = 'nfo-sermon-stats';
@@ -268,7 +268,7 @@ final class NFO_Sermon_Stats {
 			);
 			echo '<p class="description">' . ( $has_key
 				? esc_html__( 'A key is saved. Paste a new one to replace it, or clear the field to remove it.', 'nfo-sermon-stats' )
-				: esc_html__( 'Paste the key supplied by Ninefootone Creative.', 'nfo-sermon-stats' ) ) . '</p>';
+				: esc_html__( 'Paste the key supplied by ninefootone creative.', 'nfo-sermon-stats' ) ) . '</p>';
 		}
 
 		echo '</td></tr></table>';

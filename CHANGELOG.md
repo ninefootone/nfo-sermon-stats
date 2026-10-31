@@ -2,6 +2,11 @@
 
 All notable changes to Sermon Download Stats are documented here.
 
+## 1.2.1
+
+### Changed
+- Author name shown as "ninefootone creative" (lower case), in the plugin list and on the settings page.
+
 ## 1.2.0
 
 ### Added
