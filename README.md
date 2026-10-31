@@ -20,6 +20,11 @@ WordPress plugin that shows a church its sermon download stats from `sermons.dow
 
 Updates then appear in WordPress like any other plugin.
 
+Optional, for busy servers: add a GitHub token so update checks aren't limited to 60 an hour per server IP. Use a **classic** token with **no scopes** and **no expiry**, shared by all sites (Church Events reads the same constant). Never commit it here.
+```php
+define( 'NFO_GITHUB_TOKEN', 'ghp_...' );
+```
+
 ## Releasing an update
 
 1. Make the change.

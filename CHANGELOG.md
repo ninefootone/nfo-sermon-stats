@@ -2,6 +2,11 @@
 
 All notable changes to Sermon Download Stats are documented here.
 
+## 1.2.3
+
+### Added
+- Optional `NFO_GITHUB_TOKEN` constant in wp-config.php (shared with Church Events) to authenticate update checks and raise GitHub's limit. Without it, updates work exactly as before.
+
 ## 1.2.2
 
 ### Changed

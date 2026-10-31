@@ -3,7 +3,7 @@
  * Plugin Name:       Sermon Download Stats
  * Plugin URI:        https://github.com/ninefootone/nfo-sermon-stats
  * Description:       Shows sermon download statistics from sermons.download in the WordPress dashboard.
- * Version:           1.2.2
+ * Version:           1.2.3
  * Author:            ninefootone creative
  * Author URI:        https://ninefootone.co.uk
  * Requires at least: 6.0
@@ -24,11 +24,15 @@ if ( file_exists( __DIR__ . '/lib/plugin-update-checker/plugin-update-checker.ph
 		'nfo-sermon-stats'
 	);
 	$nfo_ss_update_checker->getVcsApi()->enableReleaseAssets();
+	// Optional GitHub token (wp-config.php) to raise GitHub's update-check limit. Never put it in this repo.
+	if ( defined( 'NFO_GITHUB_TOKEN' ) && NFO_GITHUB_TOKEN ) {
+		$nfo_ss_update_checker->setAuthentication( NFO_GITHUB_TOKEN );
+	}
 }
 
 final class NFO_Sermon_Stats {
 
-	const VERSION          = '1.2.2';
+	const VERSION          = '1.2.3';
 	const OPTION           = 'nfo_sermon_stats_key';
 	const DEFAULT_ENDPOINT = 'https://stats.sermons.download/v1/summary';
 	const PAGE_SLUG        = 'nfo-sermon-stats';
