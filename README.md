@@ -44,7 +44,8 @@ define( 'NFO_GITHUB_TOKEN', 'ghp_...' );
 
 | File | Where it goes |
 |---|---|
-| `download-worker.js` | Every `[slug]-downloads` Worker (needs `BUCKET`, `DB`, `CHURCH`, `VISITOR_SALT`) |
+| `sermon-downloads-worker.js` | The single shared `sermon-downloads` Worker for every church (needs `DB`, `VISITOR_SALT`, one `R2_<SLUG>` bucket binding per church, optional `HOSTS`) |
+| `download-worker.js` | **Legacy** per-church `[slug]-downloads` Worker — only until each church is moved to `sermon-downloads`, then delete |
 | `sermon-stats-worker.js` | The `sermon-stats` Worker on `stats.sermons.download` (needs `DB`, and a Cron Trigger `17 3 * * *` for the daily privacy clean-up) |
 | `stats-keys.sql` | Creating, rotating and disabling church stats keys |
 | `migration-2026-10-visitor.sql` | Adds `visitor`, `bot`, `user_agent` to `downloads` (already run) |
