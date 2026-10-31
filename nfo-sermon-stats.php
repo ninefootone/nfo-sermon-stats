@@ -3,7 +3,7 @@
  * Plugin Name:       Sermon Download Stats
  * Plugin URI:        https://github.com/ninefootone/nfo-sermon-stats
  * Description:       Shows sermon download statistics from sermons.download in the WordPress dashboard.
- * Version:           1.2.3
+ * Version:           1.3.0
  * Author:            ninefootone creative
  * Author URI:        https://ninefootone.co.uk
  * Requires at least: 6.0
@@ -32,7 +32,7 @@ if ( file_exists( __DIR__ . '/lib/plugin-update-checker/plugin-update-checker.ph
 
 final class NFO_Sermon_Stats {
 
-	const VERSION          = '1.2.3';
+	const VERSION          = '1.3.0';
 	const OPTION           = 'nfo_sermon_stats_key';
 	const DEFAULT_ENDPOINT = 'https://stats.sermons.download/v1/summary';
 	const PAGE_SLUG        = 'nfo-sermon-stats';
@@ -115,6 +115,7 @@ final class NFO_Sermon_Stats {
 				/* translators: %d: HTTP status code */
 				$error = new WP_Error( 'bad_response', sprintf( __( 'The stats service returned an error (%d). Try again shortly.', 'nfo-sermon-stats' ), $code ) );
 			} else {
+				$data               = self::add_titles( $data );
 				$data['fetched_at'] = time();
 				set_transient( $cache_name, array( 'ok' => true, 'data' => $data ), self::CACHE_TTL );
 				return $data;
@@ -323,7 +324,7 @@ final class NFO_Sermon_Stats {
 		foreach ( $rows as $row ) {
 			$file = (string) ( $row['filename'] ?? '' );
 			$path = (string) ( $row['path'] ?? $file );
-			echo '<li><span class="nfo-ss-file" title="' . esc_attr( $path ) . '">' . self::sermon_label( $file, $path ) . '</span><span class="nfo-ss-count">' . esc_html( number_format_i18n( (int) ( $row['downloads'] ?? 0 ) ) ) . '</span></li>';
+			echo '<li><span class="nfo-ss-file" title="' . esc_attr( $path ) . '">' . self::sermon_label( $row ) . '</span><span class="nfo-ss-count">' . esc_html( number_format_i18n( (int) ( $row['downloads'] ?? 0 ) ) ) . '</span></li>';
 		}
 		echo '</ol>';
 	}
@@ -373,7 +374,7 @@ final class NFO_Sermon_Stats {
 		foreach ( $rows as $row ) {
 			$file = (string) $row['filename'];
 			$path = (string) ( $row['path'] ?? $file );
-			echo '<tr><td title="' . esc_attr( $path ) . '">' . self::sermon_label( $file, $path ) . '</td><td>' . esc_html( $row['country'] ? self::country_name( (string) $row['country'] ) : '—' ) . '</td><td>' . esc_html( self::format_time( (string) $row['downloaded_at'] ) ) . '</td></tr>';
+			echo '<tr><td title="' . esc_attr( $path ) . '">' . self::sermon_label( $row ) . '</td><td>' . esc_html( $row['country'] ? self::country_name( (string) $row['country'] ) : '—' ) . '</td><td>' . esc_html( self::format_time( (string) $row['downloaded_at'] ) ) . '</td></tr>';
 		}
 		echo '</tbody></table>';
 	}
@@ -401,16 +402,134 @@ final class NFO_Sermon_Stats {
 
 	/** "2026-04-12_Morning-Service.mp3" → "2026-04-12 Morning Service". Full name stays in the tooltip. */
 	/**
-	 * Escaped HTML label: tidied filename, plus its folder (e.g. "2026/10") so files
-	 * with the same name in different folders can be told apart.
+	 * Escaped HTML label for a stats row: the sermon's title and date when the file was
+	 * matched to a sermon, otherwise the tidied filename plus its folder (e.g. "2026/10")
+	 * so files with the same name in different folders can be told apart.
 	 */
-	public static function sermon_label( $file, $path ) {
+	public static function sermon_label( array $row ) {
+		if ( ! empty( $row['title'] ) ) {
+			$label = esc_html( $row['title'] );
+			if ( ! empty( $row['date'] ) ) {
+				$label .= ' <span class="nfo-ss-folder">' . esc_html( mysql2date( 'j M Y', $row['date'] ) ) . '</span>';
+			}
+			return $label;
+		}
+		$file   = (string) ( $row['filename'] ?? '' );
+		$path   = (string) ( $row['path'] ?? $file );
 		$label  = esc_html( self::pretty_filename( $file ) );
 		$folder = trim( (string) preg_replace( '#^.*?wp-content/uploads/#', '', dirname( $path ) ), '/.' );
 		if ( '' !== $folder ) {
 			$label .= ' <span class="nfo-ss-folder">' . esc_html( $folder ) . '</span>';
 		}
 		return $label;
+	}
+
+	/* ---------- Sermon titles ---------- */
+
+	/**
+	 * Where sermon audio links live. Default: David Turner's sermons plugin.
+	 * Other sermon plugins can add their own with the nfo_sermon_stats_sources filter.
+	 */
+	public static function sermon_sources() {
+		return (array) apply_filters(
+			'nfo_sermon_stats_sources',
+			array(
+				array(
+					'post_type' => 'nfo_sermon',
+					'meta_key'  => 'nfo_sermon_audio_file', // phpcs:ignore WordPress.DB.SlowDBQuery
+				),
+			)
+		);
+	}
+
+	/** Adds 'title' and 'date' to stats rows whose file matches a sermon on this site. */
+	public static function add_titles( array $data ) {
+		$map = self::sermon_file_map();
+		if ( empty( $map['path'] ) ) {
+			return $data;
+		}
+		foreach ( array( 'top_30_days', 'top_all_time', 'recent' ) as $list ) {
+			if ( empty( $data[ $list ] ) || ! is_array( $data[ $list ] ) ) {
+				continue;
+			}
+			foreach ( $data[ $list ] as $i => $row ) {
+				$match = self::match_sermon( $map, (string) ( $row['path'] ?? '' ), (string) ( $row['filename'] ?? '' ) );
+				if ( $match ) {
+					$data[ $list ][ $i ]['title'] = $match['title'];
+					$data[ $list ][ $i ]['date']  = $match['date'];
+				}
+			}
+		}
+		return $data;
+	}
+
+	/** One query per source: every sermon's audio file, keyed by folder/filename and by filename. */
+	private static function sermon_file_map() {
+		global $wpdb;
+		$map = array( 'path' => array(), 'name' => array() );
+		foreach ( self::sermon_sources() as $source ) {
+			if ( empty( $source['post_type'] ) || empty( $source['meta_key'] ) ) {
+				continue;
+			}
+			$rows = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT p.ID, p.post_title, p.post_date, m.meta_value
+					 FROM {$wpdb->postmeta} m JOIN {$wpdb->posts} p ON p.ID = m.post_id
+					 WHERE m.meta_key = %s AND p.post_type = %s
+					   AND p.post_status IN ('publish', 'private', 'future') AND m.meta_value <> ''",
+					$source['meta_key'],
+					$source['post_type']
+				),
+				ARRAY_A
+			);
+			foreach ( (array) $rows as $r ) {
+				$rel = self::normalise_path( (string) $r['meta_value'] );
+				if ( '' === $rel ) {
+					continue;
+				}
+				$entry                                       = array( 'title' => $r['post_title'], 'date' => $r['post_date'] );
+				$map['path'][ $rel ]                         = $entry;
+				$map['name'][ basename( $rel ) ][ $r['ID'] ] = $entry;
+			}
+		}
+		return $map;
+	}
+
+	/**
+	 * Match on folder + filename. Rows with only a filename (older downloads) match
+	 * only when exactly one sermon uses that filename — several "6pm.mp3" stay unmatched.
+	 */
+	private static function match_sermon( array $map, $path, $filename ) {
+		$rel = self::normalise_path( '' !== $path ? $path : $filename );
+		if ( '' === $rel ) {
+			return null;
+		}
+		if ( isset( $map['path'][ $rel ] ) ) {
+			return $map['path'][ $rel ];
+		}
+		$name = basename( $rel );
+		if ( isset( $map['name'][ $name ] ) && 1 === count( $map['name'][ $name ] ) ) {
+			return reset( $map['name'][ $name ] );
+		}
+		return null;
+	}
+
+	/**
+	 * "https://x.org/wp-content/uploads/2026/06/A%20B.mp3", "wp-content/uploads/2026/06/A B.mp3"
+	 * and "https://x.sermons.download/2026/06/A B.mp3" all become "2026/06/a b.mp3".
+	 */
+	public static function normalise_path( $value ) {
+		$value = trim( $value );
+		if ( '' === $value ) {
+			return '';
+		}
+		$path = wp_parse_url( $value, PHP_URL_PATH );
+		$path = rawurldecode( is_string( $path ) ? $path : $value );
+		$pos  = strpos( $path, 'wp-content/uploads/' );
+		if ( false !== $pos ) {
+			$path = substr( $path, $pos + strlen( 'wp-content/uploads/' ) );
+		}
+		return strtolower( trim( $path, '/' ) );
 	}
 
 	public static function pretty_filename( $file ) {

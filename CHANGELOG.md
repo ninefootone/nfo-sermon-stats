@@ -2,6 +2,12 @@
 
 All notable changes to Sermon Download Stats are documented here.
 
+## 1.3.0
+
+### Added
+- Stats show the sermon's title and date instead of the filename, by matching each file to the sermon whose `nfo_sermon_audio_file` points to it (David Turner's sermons plugin). Matching is by folder and filename; older downloads recorded with only a filename get a title only when exactly one sermon uses that filename. Unmatched files still show the filename and folder.
+- `nfo_sermon_stats_sources` filter to add other sermon plugins' post type and audio field.
+
 ## 1.2.3
 
 ### Added
