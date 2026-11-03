@@ -47,6 +47,7 @@ define( 'NFO_GITHUB_TOKEN', 'ghp_...' );
 | `sermon-downloads-worker.js` | The single shared `sermon-downloads` Worker for every church (needs `DB`, `VISITOR_SALT`, one `R2_<SLUG>` bucket binding per church, optional `HOSTS`) |
 | `download-worker.js` | **Legacy** per-church `[slug]-downloads` Worker — only until each church is moved to `sermon-downloads`, then delete |
 | `sermon-stats-worker.js` | The `sermon-stats` Worker on `stats.sermons.download` (needs `DB`, and a Cron Trigger `17 3 * * *` for the daily privacy clean-up) |
+| `update-bot-list.mjs` | Refreshes the podcast bot list in `sermon-downloads-worker.js` from [OPAWG](https://github.com/opawg/user-agents-v2). Every few months: `node workers/update-bot-list.mjs`, check the diff, commit, paste the Worker. Bot flags are set when a download is logged, so old rows aren't reclassified |
 | `stats-keys.sql` | Creating, rotating and disabling church stats keys |
 | `migration-2026-10-visitor.sql` | Adds `visitor`, `bot`, `user_agent` to `downloads` (already run) |
 | `migration-2026-10-path.sql` | Adds `path` to `downloads` — run before deploying the Workers that use it |
