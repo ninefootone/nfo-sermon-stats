@@ -2,6 +2,12 @@
 
 All notable changes to Sermon Download Stats are documented here.
 
+## 1.4.0
+
+### Added
+- Under the totals: "Last 30 days: X played on the website · Y downloaded". Needs the Nov 2026 `sermon-downloads` Worker (records `kind`) and `sermon-stats` Worker (sends `by_kind`). Hidden until there's data since the split; activity before 3 Nov 2026 can't be split.
+- Footnote explains that totals include on-site plays, and that a play means started, not finished.
+
 ## 1.3.0
 
 ### Added

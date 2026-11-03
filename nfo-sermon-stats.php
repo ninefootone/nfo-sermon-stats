@@ -3,7 +3,7 @@
  * Plugin Name:       Sermon Download Stats
  * Plugin URI:        https://github.com/ninefootone/nfo-sermon-stats
  * Description:       Shows sermon download statistics from sermons.download in the WordPress dashboard.
- * Version:           1.3.0
+ * Version:           1.4.0
  * Author:            ninefootone creative
  * Author URI:        https://ninefootone.co.uk
  * Requires at least: 6.0
@@ -32,7 +32,7 @@ if ( file_exists( __DIR__ . '/lib/plugin-update-checker/plugin-update-checker.ph
 
 final class NFO_Sermon_Stats {
 
-	const VERSION          = '1.3.0';
+	const VERSION          = '1.4.0';
 	const OPTION           = 'nfo_sermon_stats_key';
 	const DEFAULT_ENDPOINT = 'https://stats.sermons.download/v1/summary';
 	const PAGE_SLUG        = 'nfo-sermon-stats';
@@ -204,6 +204,7 @@ final class NFO_Sermon_Stats {
 		}
 
 		self::render_tiles( $stats['totals'] );
+		self::render_split( $stats );
 
 		echo '<h3 class="nfo-ss-heading">' . esc_html__( 'Most downloaded — last 30 days', 'nfo-sermon-stats' ) . '</h3>';
 		self::render_file_list( array_slice( $stats['top_30_days'], 0, 5 ) );
@@ -226,6 +227,7 @@ final class NFO_Sermon_Stats {
 		}
 
 		self::render_tiles( $stats['totals'] );
+		self::render_split( $stats );
 
 		echo '<div class="nfo-ss-grid">';
 
@@ -315,6 +317,34 @@ final class NFO_Sermon_Stats {
 		echo '</div>';
 	}
 
+	/**
+	 * "Last 30 days: 12 played on the website · 5 downloaded". Only shown once the stats
+	 * Worker sends by_kind and there's at least one play or download since the split
+	 * (3 Nov 2026). Someone who plays and downloads the same sermon on the same day
+	 * counts once in each, so these can add up to more than the tiles.
+	 */
+	private static function render_split( array $stats ) {
+		$kinds = array();
+		foreach ( (array) ( $stats['by_kind'] ?? array() ) as $row ) {
+			if ( isset( $row['kind'] ) ) {
+				$kinds[ $row['kind'] ] = (int) ( $row['last_30'] ?? 0 );
+			}
+		}
+		$plays     = $kinds['play'] ?? 0;
+		$downloads = $kinds['download'] ?? 0;
+		if ( ! $plays && ! $downloads ) {
+			return;
+		}
+		echo '<p class="nfo-ss-split">';
+		echo '<strong>' . esc_html__( 'Last 30 days:', 'nfo-sermon-stats' ) . '</strong> ';
+		/* translators: %s: number of plays */
+		echo esc_html( sprintf( _n( '%s played on the website', '%s played on the website', $plays, 'nfo-sermon-stats' ), number_format_i18n( $plays ) ) );
+		echo ' &middot; ';
+		/* translators: %s: number of downloads */
+		echo esc_html( sprintf( _n( '%s downloaded', '%s downloaded', $downloads, 'nfo-sermon-stats' ), number_format_i18n( $downloads ) ) );
+		echo '</p>';
+	}
+
 	private static function render_file_list( array $rows ) {
 		if ( empty( $rows ) ) {
 			echo '<p class="nfo-ss-empty">' . esc_html__( 'No downloads in this period yet.', 'nfo-sermon-stats' ) . '</p>';
@@ -393,7 +423,7 @@ final class NFO_Sermon_Stats {
 		$refresh = wp_nonce_url( admin_url( 'admin-post.php?action=nfo_sermon_stats_refresh' ), 'nfo_sermon_stats_refresh' );
 		echo '<a href="' . esc_url( $refresh ) . '">' . esc_html__( 'Refresh', 'nfo-sermon-stats' ) . '</a>';
 		if ( $full ) {
-			echo '<br>' . esc_html__( 'Each person is counted once per sermon per day, and known bots are left out. Figures before November 2026 are less precise. Country data is only available for recent downloads.', 'nfo-sermon-stats' );
+			echo '<br>' . esc_html__( 'Each person is counted once per sermon per day, and known bots are left out. Totals include sermons played on the website as well as downloads. Plays and downloads are counted separately from 3 November 2026, and earlier figures cannot be split. A play means the sermon was started, not necessarily listened to all the way through. Figures before November 2026 are less precise. Country data is only available for recent downloads.', 'nfo-sermon-stats' );
 		}
 		echo '</p>';
 	}
@@ -582,6 +612,7 @@ final class NFO_Sermon_Stats {
 			.nfo-ss-empty,.nfo-ss-meta{color:#646970}
 			.nfo-ss-meta{font-size:12px;margin-top:12px}
 			.nfo-ss-footer{margin:12px 0 0}
+			.nfo-ss-split{margin:-8px 0 16px;color:#1d2327}
 			.nfo-ss .nfo-ss-tiles{max-width:900px;margin-top:16px}
 			.nfo-ss .nfo-ss-num{font-size:28px}
 			.nfo-ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;max-width:1200px}

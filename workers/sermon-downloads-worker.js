@@ -86,8 +86,16 @@ async function logDownload(env, request, church, path, filename) {
     const isBot = userAgent === '' || BOT_PATTERN.test(userAgent) ? 1 : 0;
     const now = new Date().toISOString();
 
+    // What fetched the file: the on-page player (audio/video) or a download link (document).
+    // Anything else is saved as-is, or 'unknown' if the browser didn't say.
+    const dest = (request.headers.get('Sec-Fetch-Dest') || '').toLowerCase();
+    const kind =
+      dest === 'audio' || dest === 'video' ? 'play'
+      : dest === 'document' ? 'download'
+      : (dest || 'unknown').slice(0, 20);
+
     await env.DB.prepare(
-      'INSERT INTO downloads (church, filename, path, country, downloaded_at, visitor, bot, user_agent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO downloads (church, filename, path, country, downloaded_at, visitor, bot, user_agent, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     ).bind(
       church,
       filename,
@@ -96,7 +104,8 @@ async function logDownload(env, request, church, path, filename) {
       now,
       await visitorId(env, request, now.slice(0, 10)),
       isBot,
-      userAgent.slice(0, 200) || null
+      userAgent.slice(0, 200) || null,
+      kind
     ).run();
   } catch (err) {
     console.error('D1 logging error:', err);

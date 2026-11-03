@@ -23,7 +23,7 @@ const BASE = `WITH pm AS (
     GROUP BY filename HAVING COUNT(DISTINCT path) = 1
   ),
   d AS (
-    SELECT downloads.filename, downloads.country, downloads.downloaded_at, downloads.visitor,
+    SELECT downloads.filename, downloads.country, downloads.downloaded_at, downloads.visitor, downloads.kind,
            COALESCE(downloads.path, pm.path, downloads.filename) AS item
     FROM downloads LEFT JOIN pm ON pm.filename = downloads.filename
     WHERE downloads.church = ? AND ${SERMON_FILTER.replace(/filename/g, 'downloads.filename')}
@@ -53,7 +53,7 @@ export default {
 
       const q = (sql) => env.DB.prepare(`${BASE} ${sql}`).bind(row.church, row.church);
 
-      const [totals, monthly, top30, topAll, countries, recent] = await env.DB.batch([
+      const [totals, monthly, top30, topAll, countries, recent, byKind] = await env.DB.batch([
         q(`SELECT COUNT(DISTINCT ${KEY}) AS all_time,
                   COUNT(DISTINCT CASE WHEN downloaded_at >= date('now', '-7 days') THEN ${KEY} END) AS last_7,
                   COUNT(DISTINCT CASE WHEN downloaded_at >= date('now', '-30 days') THEN ${KEY} END) AS last_30,
@@ -74,6 +74,13 @@ export default {
            GROUP BY country ORDER BY downloads DESC LIMIT 10`),
         q(`SELECT filename, item AS path, country, MAX(downloaded_at) AS downloaded_at
            FROM d GROUP BY ${KEY} ORDER BY 4 DESC LIMIT 10`),
+        // Plays (on-page player) vs downloads. Rows from before the split have no kind.
+        q(`SELECT CASE WHEN kind IS NULL THEN 'before_split'
+                       WHEN kind IN ('play', 'download') THEN kind
+                       ELSE 'other' END AS kind,
+                  COUNT(DISTINCT ${KEY}) AS all_time,
+                  COUNT(DISTINCT CASE WHEN downloaded_at >= date('now', '-30 days') THEN ${KEY} END) AS last_30
+           FROM d GROUP BY 1`),
       ]);
 
       return json({
@@ -85,6 +92,7 @@ export default {
         top_all_time: topAll.results,
         countries: countries.results,
         recent: recent.results,
+        by_kind: byKind.results,
       });
     } catch (err) {
       console.error('Stats query error:', err);
