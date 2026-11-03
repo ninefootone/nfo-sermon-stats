@@ -50,6 +50,7 @@ define( 'NFO_GITHUB_TOKEN', 'ghp_...' );
 | `stats-keys.sql` | Creating, rotating and disabling church stats keys |
 | `migration-2026-10-visitor.sql` | Adds `visitor`, `bot`, `user_agent` to `downloads` (already run) |
 | `migration-2026-10-path.sql` | Adds `path` to `downloads` — run before deploying the Workers that use it |
+| `migration-2026-11-listens.sql` | Creates the `listens` table for listening time (plugin 1.5.0+) — run before deploying the Workers that use it |
 
 The D1 console needs **one statement at a time, with no comment lines**.
 
@@ -57,16 +58,22 @@ The D1 console needs **one statement at a time, with no comment lines**.
 
 One visitor, one sermon (= one file path), one day (UTC). Bots (by user agent) and non-sermon file types are excluded. Rows from before the visitor ID was added count at most once per sermon per minute.
 
+## How listening is counted (plugin 1.5.0+)
+
+The plugin's `js/listen.js` watches the sermon players on the church's website and sends the number of seconds actually played (skips don't count) to `https://[slug].sermons.download/_listen`: when playback starts, every minute while playing, and on pause, end or leaving the page. The `sermon-downloads` Worker keeps one row per play session in `listens`, and seconds can only go up at a realistic speed. The stats count one visitor, one sermon, one day, keeping the longest listen. "To the end" = 90% or more. Plays in podcast apps, other websites and downloaded files aren't included.
+
+The endpoint comes from `direct_link` in the sermons plugin's `AS3CF_SETTINGS`. No `direct_link` = no listening stats on that site (override with `NFO_SERMON_STATS_LISTEN_ENDPOINT`).
+
 ## Privacy clean-up
 
 The `sermon-stats` Worker runs daily (Cron Trigger `17 3 * * *`, 03:17 UTC):
 
 - `user_agent` is deleted after 90 days.
-- `visitor` IDs older than 7 days are replaced with random `~` codes. Same person + same day still counts once, so stats don't change, but the code can't be traced to an IP address even with `VISITOR_SALT`.
+- `visitor` IDs (in `downloads` and `listens`) older than 7 days are replaced with random `~` codes. Same person + same day still counts once, so stats don't change, but the code can't be traced to an IP address even with `VISITOR_SALT`.
 - D1 Time Travel keeps restorable history for 30 days, so old values are fully gone about 30 days after that.
 
 Each run logs `Clean-up done: …` (or `Clean-up error`) in the Worker's Logs.
 
 Suggested privacy policy wording for churches:
 
-> **Sermon downloads.** When you download a sermon, we record which sermon it was, when, the country you downloaded from, and the type of browser or device you used. To count each listener once, we also create an anonymised code from your IP address that changes every day. We never store your IP address. After 7 days that code is replaced with a random one that can't be linked to you, and device details are deleted after 90 days (backup copies are kept for up to a further 30 days). We use this only to produce download statistics. Downloads are delivered by Cloudflare on our behalf.
+> **Sermon downloads.** When you download a sermon, we record which sermon it was, when, the country you downloaded from, and the type of browser or device you used. To count each listener once, we also create an anonymised code from your IP address that changes every day. We never store your IP address. After 7 days that code is replaced with a random one that can't be linked to you, and device details are deleted after 90 days (backup copies are kept for up to a further 30 days). When you play a sermon on our website, we also record how much of it was played, using the same anonymised code; no cookies are used. We use this only to produce download and listening statistics. Downloads are delivered by Cloudflare on our behalf.

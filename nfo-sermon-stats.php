@@ -2,8 +2,8 @@
 /**
  * Plugin Name:       Sermon Download Stats
  * Plugin URI:        https://github.com/ninefootone/nfo-sermon-stats
- * Description:       Shows sermon download statistics from sermons.download in the WordPress dashboard.
- * Version:           1.4.0
+ * Description:       Shows sermon download and listening statistics from sermons.download in the WordPress dashboard.
+ * Version:           1.5.0
  * Author:            ninefootone creative
  * Author URI:        https://ninefootone.co.uk
  * Requires at least: 6.0
@@ -32,7 +32,7 @@ if ( file_exists( __DIR__ . '/lib/plugin-update-checker/plugin-update-checker.ph
 
 final class NFO_Sermon_Stats {
 
-	const VERSION          = '1.4.0';
+	const VERSION          = '1.5.0';
 	const OPTION           = 'nfo_sermon_stats_key';
 	const DEFAULT_ENDPOINT = 'https://stats.sermons.download/v1/summary';
 	const PAGE_SLUG        = 'nfo-sermon-stats';
@@ -46,6 +46,41 @@ final class NFO_Sermon_Stats {
 		add_action( 'admin_post_nfo_sermon_stats_refresh', array( __CLASS__, 'handle_refresh' ) );
 		add_action( 'admin_head', array( __CLASS__, 'print_styles' ) );
 		add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), array( __CLASS__, 'action_links' ) );
+		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_listen' ) );
+	}
+
+	/* ---------- Listening time (front end) ---------- */
+
+	/**
+	 * Where the player script reports listening time: "/_listen" on the church's download
+	 * host, taken from the sermons plugin's direct_link in AS3CF_SETTINGS
+	 * (e.g. https://stag.sermons.download/). Empty = tracking off on this site.
+	 * Override with NFO_SERMON_STATS_LISTEN_ENDPOINT in wp-config.php, or the
+	 * nfo_sermon_stats_listen_endpoint filter (return '' to switch it off).
+	 */
+	public static function listen_endpoint() {
+		$url = '';
+		if ( defined( 'NFO_SERMON_STATS_LISTEN_ENDPOINT' ) ) {
+			$url = (string) NFO_SERMON_STATS_LISTEN_ENDPOINT;
+		} elseif ( defined( 'AS3CF_SETTINGS' ) && is_string( AS3CF_SETTINGS ) ) {
+			$conf = @unserialize( AS3CF_SETTINGS, array( 'allowed_classes' => false ) ); // phpcs:ignore
+			if ( is_array( $conf ) && ! empty( $conf['direct_link'] ) ) {
+				$host = wp_parse_url( (string) $conf['direct_link'], PHP_URL_HOST );
+				if ( $host ) {
+					$url = 'https://' . $host . '/_listen';
+				}
+			}
+		}
+		return (string) apply_filters( 'nfo_sermon_stats_listen_endpoint', $url );
+	}
+
+	public static function enqueue_listen() {
+		$endpoint = self::listen_endpoint();
+		if ( '' === $endpoint ) {
+			return;
+		}
+		wp_enqueue_script( 'nfo-sermon-listen', plugins_url( 'js/listen.js', __FILE__ ), array(), self::VERSION, array( 'in_footer' => true, 'strategy' => 'defer' ) );
+		wp_add_inline_script( 'nfo-sermon-listen', 'window.nfoSermonListen=' . wp_json_encode( array( 'endpoint' => esc_url_raw( $endpoint ) ) ) . ';', 'before' );
 	}
 
 	/* ---------- Config ---------- */
@@ -231,6 +266,12 @@ final class NFO_Sermon_Stats {
 
 		echo '<div class="nfo-ss-grid">';
 
+		if ( ! empty( $stats['listening']['last_30']['plays'] ) ) {
+			echo '<div class="nfo-ss-card nfo-ss-wide"><h2>' . esc_html__( 'Listening on the website — last 30 days', 'nfo-sermon-stats' ) . '</h2>';
+			self::render_listening( $stats['listening'] );
+			echo '</div>';
+		}
+
 		echo '<div class="nfo-ss-card"><h2>' . esc_html__( 'Downloads by month', 'nfo-sermon-stats' ) . '</h2>';
 		self::render_months( $stats['monthly'] );
 		echo '</div>';
@@ -332,6 +373,7 @@ final class NFO_Sermon_Stats {
 		}
 		$plays     = $kinds['play'] ?? 0;
 		$downloads = $kinds['download'] ?? 0;
+		$minute    = (int) ( $stats['listening']['last_30']['one_minute'] ?? 0 );
 		if ( ! $plays && ! $downloads ) {
 			return;
 		}
@@ -342,7 +384,53 @@ final class NFO_Sermon_Stats {
 		echo ' &middot; ';
 		/* translators: %s: number of downloads */
 		echo esc_html( sprintf( _n( '%s downloaded', '%s downloaded', $downloads, 'nfo-sermon-stats' ), number_format_i18n( $downloads ) ) );
+		if ( $minute ) {
+			echo ' &middot; ';
+			/* translators: %s: number of listens */
+			echo esc_html( sprintf( _n( '%s listened for 1+ minute', '%s listened for 1+ minute', $minute, 'nfo-sermon-stats' ), number_format_i18n( $minute ) ) );
+		}
 		echo '</p>';
+	}
+
+	/** Listening tiles plus the most-listened sermons, from the player script's reports. */
+	private static function render_listening( array $l ) {
+		$t     = (array) ( $l['last_30'] ?? array() );
+		$hours = (int) ( $t['seconds'] ?? 0 ) / HOUR_IN_SECONDS;
+		$tiles = array(
+			__( 'Plays started', 'nfo-sermon-stats' )         => number_format_i18n( (int) ( $t['plays'] ?? 0 ) ),
+			__( 'Listened 1+ minute', 'nfo-sermon-stats' )    => number_format_i18n( (int) ( $t['one_minute'] ?? 0 ) ),
+			__( 'Reached halfway', 'nfo-sermon-stats' )       => number_format_i18n( (int) ( $t['halfway'] ?? 0 ) ),
+			__( 'Listened to the end', 'nfo-sermon-stats' )   => number_format_i18n( (int) ( $t['to_the_end'] ?? 0 ) ),
+			__( 'Hours listened', 'nfo-sermon-stats' )        => number_format_i18n( $hours, $hours < 10 ? 1 : 0 ),
+		);
+		echo '<div class="nfo-ss-tiles nfo-ss-tiles-5">';
+		foreach ( $tiles as $label => $value ) {
+			echo '<div class="nfo-ss-tile"><span class="nfo-ss-num">' . esc_html( $value ) . '</span><span class="nfo-ss-label">' . esc_html( $label ) . '</span></div>';
+		}
+		echo '</div>';
+
+		$rows = (array) ( $l['top_30_days'] ?? array() );
+		if ( $rows ) {
+			echo '<h3 class="nfo-ss-heading">' . esc_html__( 'Most listened', 'nfo-sermon-stats' ) . '</h3>';
+			echo '<ol class="nfo-ss-list">';
+			foreach ( $rows as $row ) {
+				$row['filename'] = basename( (string) ( $row['path'] ?? '' ) );
+				$detail          = sprintf(
+					/* translators: 1: plays, 2: listens of 1+ minute, 3: average minutes */
+					__( '%1$s plays · %2$s for 1+ min · avg %3$s min', 'nfo-sermon-stats' ),
+					number_format_i18n( (int) ( $row['plays'] ?? 0 ) ),
+					number_format_i18n( (int) ( $row['one_minute'] ?? 0 ) ),
+					number_format_i18n( round( (int) ( $row['avg_seconds'] ?? 0 ) / 60 ) )
+				);
+				echo '<li><span class="nfo-ss-file" title="' . esc_attr( (string) ( $row['path'] ?? '' ) ) . '">' . self::sermon_label( $row ) . '</span><span class="nfo-ss-count">' . esc_html( $detail ) . '</span></li>';
+			}
+			echo '</ol>';
+		}
+
+		if ( ! empty( $t['since'] ) ) {
+			/* translators: %s: date */
+			echo '<p class="nfo-ss-meta">' . esc_html( sprintf( __( 'Listening time recorded since %s. Counts time actually played: skipping ahead doesn\'t count, and "to the end" means 90%% or more. Plays on other websites, podcast apps and downloaded files aren\'t included.', 'nfo-sermon-stats' ), self::format_time( (string) $t['since'], get_option( 'date_format' ) ) ) ) . '</p>';
+		}
 	}
 
 	private static function render_file_list( array $rows ) {
@@ -477,6 +565,15 @@ final class NFO_Sermon_Stats {
 		$map = self::sermon_file_map();
 		if ( empty( $map['path'] ) ) {
 			return $data;
+		}
+		if ( ! empty( $data['listening']['top_30_days'] ) && is_array( $data['listening']['top_30_days'] ) ) {
+			foreach ( $data['listening']['top_30_days'] as $i => $row ) {
+				$match = self::match_sermon( $map, (string) ( $row['path'] ?? '' ), '' );
+				if ( $match ) {
+					$data['listening']['top_30_days'][ $i ]['title'] = $match['title'];
+					$data['listening']['top_30_days'][ $i ]['date']  = $match['date'];
+				}
+			}
 		}
 		foreach ( array( 'top_30_days', 'top_all_time', 'recent' ) as $list ) {
 			if ( empty( $data[ $list ] ) || ! is_array( $data[ $list ] ) ) {
@@ -613,6 +710,8 @@ final class NFO_Sermon_Stats {
 			.nfo-ss-meta{font-size:12px;margin-top:12px}
 			.nfo-ss-footer{margin:12px 0 0}
 			.nfo-ss-split{margin:-8px 0 16px;color:#1d2327}
+			.nfo-ss .nfo-ss-tiles-5{grid-template-columns:repeat(5,1fr);max-width:none;margin-top:0}
+			.nfo-ss-card .nfo-ss-num{font-size:22px}
 			.nfo-ss .nfo-ss-tiles{max-width:900px;margin-top:16px}
 			.nfo-ss .nfo-ss-num{font-size:28px}
 			.nfo-ss-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;max-width:1200px}
@@ -623,7 +722,7 @@ final class NFO_Sermon_Stats {
 			.nfo-ss-bar-track{background:#f0f0f1;border-radius:2px;height:12px;overflow:hidden}
 			.nfo-ss-bar{display:block;height:100%;background:#2271b1;border-radius:2px}
 			.nfo-ss-bar-row .nfo-ss-count{text-align:right}
-			@media (max-width:782px){.nfo-ss-tiles{grid-template-columns:repeat(2,1fr)}}
+			@media (max-width:782px){.nfo-ss-tiles,.nfo-ss .nfo-ss-tiles-5{grid-template-columns:repeat(2,1fr)}}
 		</style>
 		<?php
 	}

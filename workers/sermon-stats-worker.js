@@ -34,6 +34,15 @@ const BASE = `WITH pm AS (
 // Rows without a visitor count at most once per sermon per minute.
 const KEY = `item || '|' || COALESCE(visitor || '|' || substr(downloaded_at, 1, 10), substr(downloaded_at, 1, 16))`;
 
+// Listening sessions from the on-site player, last 30 days. One listen = one visitor,
+// one sermon, one day (UTC), keeping the longest time played. "secs" is seconds actually
+// played (skipping ahead doesn't count); "dur" is the file's length when the player knew it.
+const LISTENS = `WITH l AS (
+    SELECT lower(path) AS item, MAX(path) AS path, MAX(listened) AS secs, MAX(duration) AS dur
+    FROM listens WHERE church = ?1 AND started_at >= date('now', '-30 days')
+    GROUP BY lower(path), COALESCE(visitor, session), substr(started_at, 1, 10)
+  )`;
+
 export default {
   async fetch(request, env) {
     if (request.method !== 'GET') return json({ error: 'Method not allowed' }, 405);
@@ -83,6 +92,28 @@ export default {
            FROM d GROUP BY 1`),
       ]);
 
+      // Listening time (plugin 1.5.0+). Separate so a problem here never hides the download stats.
+      let listening = null;
+      try {
+        const [lsum, ltop] = await env.DB.batch([
+          env.DB.prepare(`${LISTENS} SELECT COUNT(*) AS plays,
+                COALESCE(SUM(secs >= 60), 0) AS one_minute,
+                COALESCE(SUM(dur > 0 AND secs >= dur * 0.5), 0) AS halfway,
+                COALESCE(SUM(dur > 0 AND secs >= dur * 0.9), 0) AS to_the_end,
+                COALESCE(SUM(secs), 0) AS seconds,
+                (SELECT MIN(started_at) FROM listens WHERE church = ?1) AS since
+             FROM l`).bind(row.church),
+          env.DB.prepare(`${LISTENS} SELECT MAX(path) AS path, COUNT(*) AS plays,
+                SUM(secs >= 60) AS one_minute,
+                SUM(dur > 0 AND secs >= dur * 0.5) AS halfway,
+                CAST(AVG(secs) AS INTEGER) AS avg_seconds
+             FROM l GROUP BY item ORDER BY plays DESC, item LIMIT 10`).bind(row.church),
+        ]);
+        listening = { last_30: lsum.results[0], top_30_days: ltop.results };
+      } catch (err) {
+        console.error('Listening query error:', err);
+      }
+
       return json({
         church: row.church,
         generated_at: new Date().toISOString(),
@@ -93,6 +124,7 @@ export default {
         countries: countries.results,
         recent: recent.results,
         by_kind: byKind.results,
+        listening,
       });
     } catch (err) {
       console.error('Stats query error:', err);
@@ -120,23 +152,32 @@ const USER_AGENT_DAYS = 90;
 async function cleanUp(env) {
   const oldVisitor = `visitor IS NOT NULL AND visitor NOT LIKE '~%'
     AND downloaded_at < date('now', '-${VISITOR_DAYS} days')`;
+  // Same for listening sessions, which use started_at instead of downloaded_at.
+  const oldListener = `visitor IS NOT NULL AND visitor NOT LIKE '~%'
+    AND started_at < date('now', '-${VISITOR_DAYS} days')`;
   try {
     const results = await env.DB.batch([
       env.DB.prepare('CREATE TABLE IF NOT EXISTS visitor_map (visitor TEXT PRIMARY KEY, anon TEXT NOT NULL)'),
       env.DB.prepare('DELETE FROM visitor_map'),
+      // One random code per old ID across both tables, so a person's download and
+      // listen on the same day still match up after anonymising.
       env.DB.prepare(`INSERT INTO visitor_map (visitor, anon)
         SELECT visitor, '~' || lower(hex(randomblob(8)))
-        FROM (SELECT DISTINCT visitor FROM downloads WHERE ${oldVisitor})`),
+        FROM (SELECT visitor FROM downloads WHERE ${oldVisitor}
+              UNION SELECT visitor FROM listens WHERE ${oldListener})`),
       env.DB.prepare(`UPDATE downloads
         SET visitor = (SELECT anon FROM visitor_map m WHERE m.visitor = downloads.visitor)
         WHERE ${oldVisitor}`),
+      env.DB.prepare(`UPDATE listens
+        SET visitor = (SELECT anon FROM visitor_map m WHERE m.visitor = listens.visitor)
+        WHERE ${oldListener}`),
       env.DB.prepare('DELETE FROM visitor_map'),
       env.DB.prepare(`UPDATE downloads SET user_agent = NULL
         WHERE user_agent IS NOT NULL AND downloaded_at < date('now', '-${USER_AGENT_DAYS} days')`),
     ]);
     console.log(
-      `Clean-up done: ${results[3].meta.changes} visitor IDs anonymised, ` +
-        `${results[5].meta.changes} user agents removed`
+      `Clean-up done: ${results[3].meta.changes} download and ${results[4].meta.changes} listen visitor IDs anonymised, ` +
+        `${results[6].meta.changes} user agents removed`
     );
   } catch (err) {
     console.error('Clean-up error:', err);

@@ -2,6 +2,14 @@
 
 All notable changes to Sermon Download Stats are documented here.
 
+## 1.5.0
+
+### Added
+- Listening time from the on-site player. A small script (`js/listen.js`, front end only) reports seconds actually played to `/_listen` on the church's download host, taken from the sermons plugin's `direct_link`. Skipping ahead doesn't count. No cookies or storage.
+- Stats page: "Listening on the website — last 30 days" card (plays started, listened 1+ minute, reached halfway, listened to the end (90%+), hours listened) and a "Most listened" list. Widget line adds "X listened for 1+ minute".
+- `NFO_SERMON_STATS_LISTEN_ENDPOINT` constant and `nfo_sermon_stats_listen_endpoint` filter to override or switch off (`''`) the endpoint.
+- Needs the `listens` D1 table (`workers/migration-2026-11-listens.sql`) and the updated `sermon-downloads` and `sermon-stats` Workers.
+
 ## 1.4.0
 
 ### Added
